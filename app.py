@@ -4,103 +4,153 @@ import pandas as pd
 from datetime import datetime
 import io
 
-# --- CONFIGURACIÓN Y LISTA DE EMPLEADOS ---
-# Agregá o quitá nombres de esta lista según tu sector
-LISTA_EMPLEADOS = ["Santi", "Nicolas", "Maria", "Juan", "Pedro", "Elena"]
-PASSWORD_JEFA = "sector123" # Podés cambiar esta clave
+# --- CONFIGURACIÓN ---
+EMPLEADOS = [
+    "Hornorio Felipe Oleksuk", 
+    "Norberto Palacios", 
+    "Carla Simonetti", 
+    "Marcos Alonso", 
+    "Nicolas Vyhñak", 
+    "Viviana Ingribelli"
+]
+ADMINS = ["Nicolas Vyhñak", "Viviana Ingribelli"]
+PASSWORD_ADMIN = "mariva2026" # Podés cambiar esta clave
 
-st.set_page_config(page_title="Control de Guardias v2", layout="centered")
+st.set_page_config(page_title="Sistema de Guardias", layout="wide")
 
-# --- CONEXIÓN Y DATOS ---
+# --- CONEXIÓN ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-try:
-    df = conn.read(ttl="0")
-except Exception:
-    df = pd.DataFrame(columns=["Empleado", "Fecha", "Tipo", "Horas"])
+def cargar_datos():
+    try:
+        return conn.read(ttl="0")
+    except:
+        return pd.DataFrame(columns=["Empleado", "Fecha", "Tipo", "Horas", "Estado"])
 
-# --- LÓGICA DE CÁLCULO ---
-def calcular_estado(nombre_empleado):
-    user_df = df[df["Empleado"] == nombre_empleado]
-    horas_ganadas = user_df[user_df["Tipo"] == "Guardia"]["Horas"].sum()
-    dias_tomados_count = len(user_df[user_df["Tipo"] == "Día Tomado"])
-    balance_horas = horas_ganadas - (dias_tomados_count * 8)
-    return horas_ganadas, dias_tomados_count, (balance_horas // 8), (balance_horas % 8)
+df = cargar_datos()
 
-# --- INTERFAZ LATERAL (ADMIN) ---
-with st.sidebar:
-    st.header("🔐 Área de Control")
-    modo_admin = st.checkbox("Modo Jefa")
-    if modo_admin:
-        clave = st.text_input("Contraseña:", type="password")
-        if clave == PASSWORD_JEFA:
-            st.success("Acceso Autorizado")
-            st.subheader("Descargar Reporte")
-            
-            # Crear Excel en memoria
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                df.to_excel(writer, index=False, sheet_name='Reporte_Guardias')
-            
-            st.download_button(
-                label="📥 Descargar Todo en Excel",
-                data=buffer.getvalue(),
-                file_name=f"reporte_guardias_{datetime.now().strftime('%d_%m_%Y')}.xlsx",
-                mime="application/vnd.ms-excel"
-            )
-        elif clave != "":
-            st.error("Clave incorrecta")
-
-# --- CUERPO PRINCIPAL ---
-st.title("📊 Control de Guardias y Vacaciones")
-st.markdown("---")
-
-# Selección de Nombre Predeterminado
-nombre_sel = st.selectbox("Seleccioná tu nombre:", ["Seleccionar..."] + sorted(LISTA_EMPLEADOS))
-
-if nombre_sel != "Seleccionar...":
-    empleado = nombre_sel.lower()
-    h_totales, d_usados, d_disp, h_rem = calcular_estado(empleado)
+# --- LÓGICA DE SALDOS ---
+def obtener_resumen(nombre):
+    # Solo cuentan las guardias APROBADAS
+    user_df = df[(df["Empleado"] == nombre) & (df["Estado"] == "Aprobado")]
+    h_ganadas = user_df[user_df["Tipo"] == "Guardia"]["Horas"].sum()
+    d_usados = len(user_df[user_df["Tipo"] == "Día Tomado"])
     
-    # Métricas
-    c1, c2, c3 = st.columns(3)
+    balance = h_ganadas - (d_usados * 8)
+    return h_ganadas, d_usados, (balance // 8), (balance % 8)
+
+# --- INTERFAZ ---
+st.title("🏦 Control de Guardias y Compensatorios")
+
+# Selector de usuario con estilo limpio
+user_sel = st.selectbox("Identificate para continuar:", ["Seleccionar..."] + EMPLEADOS)
+
+if user_sel != "Seleccionar...":
+    es_admin = user_sel in ADMINS
+    
+    # Si es Admin, pide clave para habilitar funciones de Jefa
+    auth_admin = False
+    if es_admin:
+        with st.expander("🔐 Acceso Administrador / Jefatura"):
+            pass_input = st.text_input("Contraseña de seguridad:", type="password")
+            if pass_input == PASSWORD_ADMIN:
+                auth_admin = True
+                st.success("Funciones de aprobación habilitadas.")
+            elif pass_input != "":
+                st.error("Contraseña incorrecta.")
+
+    # Dashboard de métricas
+    h_tot, d_uso, d_disp, h_rem = obtener_resumen(user_sel)
+    
+    st.markdown(f"### Estado de {user_sel}")
+    c1, c2, c3, c4 = st.columns(4)
     c1.metric("Días Disponibles", f"{int(d_disp)}")
-    c2.metric("Horas Acumuladas", f"{int(h_rem)}/8 hs")
-    c3.metric("Días Usados", f"{int(d_usados)}")
+    c2.metric("Horas p/ Próximo Día", f"{int(h_rem)}/8 hs")
+    c3.metric("Total Horas (Aprobadas)", f"{int(h_tot)} hs")
+    c4.metric("Días Ya Tomados", f"{int(d_uso)}")
 
-    tab1, tab2, tab3 = st.tabs(["➕ Cargar Guardia", "📅 Pedir Día", "📜 Mi Historial"])
+    # Pestañas de Interacción
+    pest_nombres = ["➕ Cargar Guardia", "📜 Mi Historial"]
+    if auth_admin:
+        pest_nombres.insert(1, "📩 Pendientes de Aprobación")
+        pest_nombres.append("📊 Reporte General")
+    
+    tabs = st.tabs(pest_nombres)
 
-    with tab1:
-        st.subheader("Registrar nueva guardia")
-        f_g = st.date_input("Fecha:", datetime.now())
-        if st.button("Confirmar +2hs"):
-            nueva = pd.DataFrame([{"Empleado": empleado, "Fecha": f_g.strftime("%d/%m/%Y"), "Tipo": "Guardia", "Horas": 2}])
+    # TAB 1: CARGAR GUARDIA (Para todos)
+    with tabs[0]:
+        st.write("Registrá tus horas extras para aprobación.")
+        f_g = st.date_input("Fecha de la guardia:", datetime.now())
+        if st.button("Enviar para Revisión (+2hs)"):
+            nueva = pd.DataFrame([{
+                "Empleado": user_sel,
+                "Fecha": f_g.strftime("%d/%m/%Y"),
+                "Tipo": "Guardia",
+                "Horas": 2,
+                "Estado": "Pendiente"
+            }])
             conn.update(data=pd.concat([df, nueva], ignore_index=True))
-            st.success("Guardado.")
+            st.toast("Guardia enviada. Pendiente de aprobación por Jefatura.")
             st.rerun()
-
-    with tab2:
-        st.subheader("Solicitar día")
+        
+        st.markdown("---")
         if d_disp >= 1:
-            if st.button("✅ Usar 1 Día"):
-                nueva = pd.DataFrame([{"Empleado": empleado, "Fecha": datetime.now().strftime("%d/%m/%Y"), "Tipo": "Día Tomado", "Horas": 0}])
+            if st.button("✅ Solicitar Uso de 1 Día"):
+                nueva = pd.DataFrame([{
+                    "Empleado": user_sel,
+                    "Fecha": datetime.now().strftime("%d/%m/%Y"),
+                    "Tipo": "Día Tomado",
+                    "Horas": 0,
+                    "Estado": "Aprobado" # El día tomado se descuenta directo o podés ponerlo pendiente también
+                }])
                 conn.update(data=pd.concat([df, nueva], ignore_index=True))
                 st.rerun()
-        else:
-            st.warning("No tenés horas suficientes.")
 
-    with tab3:
-        st.subheader("Mis movimientos")
-        u_df = df[df["Empleado"] == empleado].copy()
+    # TAB: PENDIENTES (Solo Jefa/Admin)
+    if auth_admin:
+        with tabs[1]:
+            st.subheader("Solicitudes esperando aprobación")
+            pendientes = df[df["Estado"] == "Pendiente"].copy()
+            if not pendientes.empty:
+                for idx, row in pendientes.iterrows():
+                    with st.container(border=True):
+                        col_info, col_btn = st.columns([3, 1])
+                        col_info.write(f"**{row['Empleado']}** - {row['Fecha']} ({row['Horas']}hs)")
+                        if col_btn.button(f"Aprobar", key=f"app_{idx}"):
+                            df.at[idx, "Estado"] = "Aprobado"
+                            conn.update(data=df)
+                            st.rerun()
+                        if col_btn.button(f"Rechazar", key=f"rej_{idx}"):
+                            df.at[idx, "Estado"] = "Rechazado"
+                            conn.update(data=df)
+                            st.rerun()
+            else:
+                st.info("No hay trámites pendientes.")
+
+    # TAB: MI HISTORIAL
+    hist_idx = 2 if auth_admin else 1
+    with tabs[hist_idx]:
+        st.write("Tus últimos movimientos y sus estados:")
+        u_df = df[df["Empleado"] == user_sel].copy()
         if not u_df.empty:
-            st.dataframe(u_df[["Fecha", "Tipo", "Horas"]], use_container_width=True)
-            
-            st.markdown("---")
-            st.caption("Anulaciones")
+            st.dataframe(u_df[["Fecha", "Tipo", "Horas", "Estado"]], use_container_width=True)
+            # Solo dejar borrar si está pendiente o si sos admin
             u_df['ID'] = u_df.index
-            ops = u_df.apply(lambda x: f"ID:{x['ID']} | {x['Fecha']} | {x['Tipo']}", axis=1).tolist()
-            borrar = st.selectbox("Eliminar registro:", ops)
-            if st.button("🗑️ Borrar Seleccionado"):
-                idx = int(borrar.split("|")[0].replace("ID:", "").strip())
-                conn.update(data=df.drop(idx))
+            opciones = u_df.apply(lambda x: f"ID:{x['ID']} | {x['Fecha']} | {x['Tipo']} ({x['Estado']})", axis=1).tolist()
+            st.markdown("---")
+            borrar = st.selectbox("Anular un registro propio:", opciones)
+            if st.button("🗑️ Eliminar"):
+                id_borrar = int(borrar.split("|")[0].replace("ID:", "").strip())
+                conn.update(data=df.drop(id_borrar))
                 st.rerun()
+
+    # TAB: REPORTE GENERAL (Solo Jefa/Admin)
+    if auth_admin:
+        with tabs[-1]:
+            st.subheader("Descargar planilla completa")
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                df.to_excel(writer, index=False)
+            st.download_button("📥 Descargar reporte para RRHH", buffer.getvalue(), "reporte_total.xlsx")
+            st.write("Vista global del sector:")
+            st.dataframe(df)
