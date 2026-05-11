@@ -14,7 +14,7 @@ EMPLEADOS = [
     "Viviana Ingribelli"
 ]
 ADMINS = ["Nicolas Vyhñak", "Viviana Ingribelli"]
-PASSWORD_ADMIN = "mariva2026" # Podés cambiar esta clave
+PASSWORD_ADMIN = "mariva2026" 
 
 st.set_page_config(page_title="Sistema de Guardias", layout="wide")
 
@@ -31,7 +31,6 @@ df = cargar_datos()
 
 # --- LÓGICA DE SALDOS ---
 def obtener_resumen(nombre):
-    # Solo cuentan las guardias APROBADAS
     user_df = df[(df["Empleado"] == nombre) & (df["Estado"] == "Aprobado")]
     h_ganadas = user_df[user_df["Tipo"] == "Guardia"]["Horas"].sum()
     d_usados = len(user_df[user_df["Tipo"] == "Día Tomado"])
@@ -42,24 +41,22 @@ def obtener_resumen(nombre):
 # --- INTERFAZ ---
 st.title("🏦 Control de Guardias y Compensatorios")
 
-# Selector de usuario con estilo limpio
 user_sel = st.selectbox("Identificate para continuar:", ["Seleccionar..."] + EMPLEADOS)
 
 if user_sel != "Seleccionar...":
     es_admin = user_sel in ADMINS
     
-    # Si es Admin, pide clave para habilitar funciones de Jefa
     auth_admin = False
     if es_admin:
-        with st.expander("🔐 Acceso Administrador / Jefatura"):
+        # CAMBIO REALIZADO AQUÍ: Etiqueta más profesional
+        with st.expander("🔐 Administrador"):
             pass_input = st.text_input("Contraseña de seguridad:", type="password")
             if pass_input == PASSWORD_ADMIN:
                 auth_admin = True
-                st.success("Funciones de aprobación habilitadas.")
+                st.success("Funciones de validación habilitadas.")
             elif pass_input != "":
                 st.error("Contraseña incorrecta.")
 
-    # Dashboard de métricas
     h_tot, d_uso, d_disp, h_rem = obtener_resumen(user_sel)
     
     st.markdown(f"### Estado de {user_sel}")
@@ -69,7 +66,6 @@ if user_sel != "Seleccionar...":
     c3.metric("Total Horas (Aprobadas)", f"{int(h_tot)} hs")
     c4.metric("Días Ya Tomados", f"{int(d_uso)}")
 
-    # Pestañas de Interacción
     pest_nombres = ["➕ Cargar Guardia", "📜 Mi Historial"]
     if auth_admin:
         pest_nombres.insert(1, "📩 Pendientes de Aprobación")
@@ -77,7 +73,6 @@ if user_sel != "Seleccionar...":
     
     tabs = st.tabs(pest_nombres)
 
-    # TAB 1: CARGAR GUARDIA (Para todos)
     with tabs[0]:
         st.write("Registrá tus horas extras para aprobación.")
         f_g = st.date_input("Fecha de la guardia:", datetime.now())
@@ -90,7 +85,7 @@ if user_sel != "Seleccionar...":
                 "Estado": "Pendiente"
             }])
             conn.update(data=pd.concat([df, nueva], ignore_index=True))
-            st.toast("Guardia enviada. Pendiente de aprobación por Jefatura.")
+            st.toast("Guardia enviada. Pendiente de aprobación.")
             st.rerun()
         
         st.markdown("---")
@@ -101,12 +96,11 @@ if user_sel != "Seleccionar...":
                     "Fecha": datetime.now().strftime("%d/%m/%Y"),
                     "Tipo": "Día Tomado",
                     "Horas": 0,
-                    "Estado": "Aprobado" # El día tomado se descuenta directo o podés ponerlo pendiente también
+                    "Estado": "Aprobado" 
                 }])
                 conn.update(data=pd.concat([df, nueva], ignore_index=True))
                 st.rerun()
 
-    # TAB: PENDIENTES (Solo Jefa/Admin)
     if auth_admin:
         with tabs[1]:
             st.subheader("Solicitudes esperando aprobación")
@@ -127,14 +121,12 @@ if user_sel != "Seleccionar...":
             else:
                 st.info("No hay trámites pendientes.")
 
-    # TAB: MI HISTORIAL
     hist_idx = 2 if auth_admin else 1
     with tabs[hist_idx]:
         st.write("Tus últimos movimientos y sus estados:")
         u_df = df[df["Empleado"] == user_sel].copy()
         if not u_df.empty:
             st.dataframe(u_df[["Fecha", "Tipo", "Horas", "Estado"]], use_container_width=True)
-            # Solo dejar borrar si está pendiente o si sos admin
             u_df['ID'] = u_df.index
             opciones = u_df.apply(lambda x: f"ID:{x['ID']} | {x['Fecha']} | {x['Tipo']} ({x['Estado']})", axis=1).tolist()
             st.markdown("---")
@@ -144,7 +136,6 @@ if user_sel != "Seleccionar...":
                 conn.update(data=df.drop(id_borrar))
                 st.rerun()
 
-    # TAB: REPORTE GENERAL (Solo Jefa/Admin)
     if auth_admin:
         with tabs[-1]:
             st.subheader("Descargar planilla completa")
