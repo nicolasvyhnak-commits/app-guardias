@@ -31,7 +31,7 @@ df = cargar_datos()
 
 # --- LÓGICA DE SALDOS ---
 def obtener_resumen(nombre):
-    # Solo cuentan las guardias APROBADAS (y que no estén en proceso de baja)
+    # Solo cuentan las guardias APROBADAS
     user_df = df[(df["Empleado"] == nombre) & (df["Estado"] == "Aprobado")]
     h_ganadas = user_df[user_df["Tipo"] == "Guardia"]["Horas"].sum()
     d_usados = len(user_df[user_df["Tipo"] == "Día Tomado"])
@@ -66,7 +66,7 @@ if user_sel != "Seleccionar...":
     c3.metric("Total Horas (Aprobadas)", f"{int(h_tot)} hs")
     c4.metric("Días Ya Tomados", f"{int(d_uso)}")
 
-    pest_nombres = ["➕ Cargar Guardia", "📜 Mi Historial"]
+    pest_nombres = ["➕ Cargar Movimientos", "📜 Mi Historial"]
     if auth_admin:
         pest_nombres.insert(1, "📩 Validaciones Pendientes")
         pest_nombres.append("📊 Reporte General")
@@ -75,26 +75,35 @@ if user_sel != "Seleccionar...":
 
     # TAB: CARGAR
     with tabs[0]:
-        st.write("Registrá tus horas extras o uso de días.")
-        f_g = st.date_input("Fecha de la guardia:", datetime.now())
-        if st.button("Enviar Guardia para Revisión (+2hs)"):
-            nueva = pd.DataFrame([{"Empleado": user_sel, "Fecha": f_g.strftime("%d/%m/%Y"), "Tipo": "Guardia", "Horas": 2, "Estado": "Pendiente"}])
-            conn.update(data=pd.concat([df, nueva], ignore_index=True))
-            st.toast("Guardia enviada.")
-            st.rerun()
+        col_g, col_d = st.columns(2)
         
-        st.markdown("---")
-        if d_disp >= 1:
-            if st.button("✅ Solicitar Uso de 1 Día"):
-                nueva = pd.DataFrame([{"Empleado": user_sel, "Fecha": datetime.now().strftime("%d/%m/%Y"), "Tipo": "Día Tomado", "Horas": 0, "Estado": "Aprobado"}])
+        with col_g:
+            st.subheader("Registrar Guardia")
+            st.write("Suma +2 horas extras para aprobación.")
+            f_g = st.date_input("Fecha de la guardia:", datetime.now(), key="fecha_guardia")
+            if st.button("Enviar Guardia para Revisión"):
+                nueva = pd.DataFrame([{"Empleado": user_sel, "Fecha": f_g.strftime("%d/%m/%Y"), "Tipo": "Guardia", "Horas": 2, "Estado": "Pendiente"}])
                 conn.update(data=pd.concat([df, nueva], ignore_index=True))
+                st.toast("Guardia enviada.")
                 st.rerun()
+        
+        with col_d:
+            st.subheader("Tomar Día Compensatorio")
+            if d_disp >= 1:
+                st.write(f"Tenés {int(d_disp)} días disponibles.")
+                f_d = st.date_input("Fecha del día que te tomás:", datetime.now(), key="fecha_dia")
+                if st.button("✅ Registrar Día Tomado (-8hs)"):
+                    nueva = pd.DataFrame([{"Empleado": user_sel, "Fecha": f_d.strftime("%d/%m/%Y"), "Tipo": "Día Tomado", "Horas": 0, "Estado": "Aprobado"}])
+                    conn.update(data=pd.concat([df, nueva], ignore_index=True))
+                    st.success(f"Día registrado para el {f_d.strftime('%d/%m/%Y')}")
+                    st.rerun()
+            else:
+                st.warning("No tenés saldo suficiente (mínimo 8hs aprobadas).")
 
     # TAB: VALIDACIONES (Solo Admin)
     if auth_admin:
         with tabs[1]:
             st.subheader("Trámites esperando resolución")
-            # Filtramos tanto ingresos nuevos como pedidos de baja
             pendientes = df[df["Estado"].isin(["Pendiente", "Baja Pendiente"])].copy()
             
             if not pendientes.empty:
@@ -109,13 +118,12 @@ if user_sel != "Seleccionar...":
                                 df.at[idx, "Estado"] = "Aprobado"
                                 conn.update(data=df)
                                 st.rerun()
-                        else: # Es Baja Pendiente
+                        else: 
                             if col_btn.button(f"Confirmar Borrado", key=f"del_{idx}"):
                                 conn.update(data=df.drop(idx))
                                 st.rerun()
                         
                         if col_btn.button(f"Rechazar", key=f"rej_{idx}"):
-                            # Si rechaza una baja, vuelve a estar Aprobado. Si rechaza un alta, queda Rechazado.
                             df.at[idx, "Estado"] = "Aprobado" if row['Estado'] == "Baja Pendiente" else "Rechazado"
                             conn.update(data=df)
                             st.rerun()
@@ -125,7 +133,7 @@ if user_sel != "Seleccionar...":
     # TAB: MI HISTORIAL
     hist_idx = 2 if auth_admin else 1
     with tabs[hist_idx]:
-        st.write("Tus movimientos:")
+        st.write("Tus movimientos registrados:")
         u_df = df[df["Empleado"] == user_sel].copy()
         if not u_df.empty:
             st.dataframe(u_df[["Fecha", "Tipo", "Horas", "Estado"]], use_container_width=True)
@@ -136,17 +144,13 @@ if user_sel != "Seleccionar...":
             
             if st.button("🗑️ Solicitar Eliminación"):
                 idx_sel = int(borrar.split("|")[0].replace("ID:", "").strip())
-                
                 if auth_admin:
-                    # Si ya está logueado como admin, borra de una
                     conn.update(data=df.drop(idx_sel))
-                    st.success("Registro eliminado directamente por administrador.")
                     st.rerun()
                 else:
-                    # Si es usuario común, lo pasa a estado de revisión
                     df.at[idx_sel, "Estado"] = "Baja Pendiente"
                     conn.update(data=df)
-                    st.warning("Solicitud de eliminación enviada a revisión.")
+                    st.warning("Solicitud de eliminación enviada.")
                     st.rerun()
 
     # TAB: REPORTE (Solo Admin)
@@ -156,5 +160,5 @@ if user_sel != "Seleccionar...":
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                 df.to_excel(writer, index=False)
-            st.download_button("📥 Descargar Excel", buffer.getvalue(), "reporte_guardias.xlsx")
+            st.download_button("📥 Descargar Excel para RRHH", buffer.getvalue(), "reporte_guardias.xlsx")
             st.dataframe(df)
