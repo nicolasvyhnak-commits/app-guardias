@@ -39,7 +39,7 @@ def obtener_resumen(nombre):
     balance = h_ganadas - (d_usados * 8)
     return h_ganadas, d_usados, (balance // 8), (balance % 8)
 
-# --- FUNCIÓN PARA GENERAR PDF REPORTE ---
+# --- FUNCIÓN PARA GENERAR PDF REPORTE DETALLADO ---
 def clean_txt(text):
     replacements = {"á": "a", "é": "e", "í": "i", "ó": "o", "ú": "u", "ñ": "n", "Ñ": "N", "Á": "A", "É": "E", "Í": "I", "Ó": "O", "Ú": "U"}
     for search, replace in replacements.items():
@@ -50,49 +50,109 @@ def generar_reporte_pdf():
     pdf = FPDF()
     pdf.add_page()
     
+    # Encabezado principal personalizado
     pdf.set_font("Helvetica", "B", 16)
-    pdf.set_text_color(20, 50, 100) 
-    pdf.cell(0, 10, clean_txt("REPORTE EJECUTIVO DE GUARDIAS Y COMPENSATORIOS"), ln=True, align="C")
+    pdf.set_text_color(20, 50, 100) # Azul corporativo
+    pdf.cell(0, 10, clean_txt("REPORTE DE GUARDIAS - SECTOR TÍTULOS"), ln=True, align="C")
     
     pdf.set_font("Helvetica", "I", 10)
     pdf.set_text_color(100, 100, 100)
-    pdf.cell(0, 8, f"Fecha de emision: {datetime.now().strftime('%d/%m/%Y %H:%M')}", ln=True, align="C")
+    pdf.cell(0, 6, f"Fecha de emision: {datetime.now().strftime('%d/%m/%Y %H:%M')}", ln=True, align="C")
     pdf.ln(10)
     
-    pdf.set_font("Helvetica", "B", 12)
-    pdf.set_text_color(0, 0, 0)
-    pdf.cell(0, 8, clean_txt("Resumen Consolidado del Sector"), ln=True)
-    pdf.ln(2)
-    
-    pdf.set_font("Helvetica", "B", 10)
-    pdf.set_fill_color(220, 230, 242) 
-    pdf.cell(55, 8, clean_txt("Empleado"), border=1, fill=True, align="L")
-    pdf.cell(35, 8, clean_txt("Días Disponibles"), border=1, fill=True, align="C")
-    pdf.cell(35, 8, clean_txt("Horas Acumuladas"), border=1, fill=True, align="C")
-    pdf.cell(30, 8, clean_txt("Días Usados"), border=1, fill=True, align="C")
-    pdf.cell(35, 8, clean_txt("Total Horas Extra"), border=1, fill=True, align="C")
-    pdf.ln()
-    
-    pdf.set_font("Helvetica", "", 10)
+    # Recorrer cada empleado para confeccionar su reporte analítico
     for emp in EMPLEADOS:
         h_tot, d_uso, d_disp, h_rem = obtener_resumen(emp)
-        pdf.cell(55, 8, clean_txt(emp), border=1, align="L")
-        pdf.cell(35, 8, str(int(d_disp)), border=1, align="C")
-        pdf.cell(35, 8, f"{int(h_rem)}/8 hs", border=1, align="C")
-        pdf.cell(30, 8, str(int(d_uso)), border=1, align="C")
-        pdf.cell(35, 8, f"{int(h_tot)} hs", border=1, align="C")
+        
+        # Filtrar exclusivamente los movimientos aprobados del empleado actual
+        emp_df = df[(df["Empleado"] == emp) & (df["Estado"] == "Aprobado")]
+        
+        # Nombre del Empleado
+        pdf.set_font("Helvetica", "B", 13)
+        pdf.set_text_color(20, 50, 100)
+        pdf.cell(0, 10, clean_txt(f"Empleado: {emp}"), ln=True)
+        
+        # Cuadro de Saldos y Totales
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_text_color(0, 0, 0)
+        pdf.set_fill_color(240, 245, 250)
+        pdf.cell(45, 6, clean_txt("Dias Disponibles"), border=1, fill=True, align="C")
+        pdf.cell(45, 6, clean_txt("Horas Acumuladas"), border=1, fill=True, align="C")
+        pdf.cell(45, 6, clean_txt("Dias Tomados"), border=1, fill=True, align="C")
+        pdf.cell(45, 6, clean_txt("Total Horas Extra"), border=1, fill=True, align="C")
         pdf.ln()
         
-    pdf.ln(15)
-    pdf.set_font("Helvetica", "I", 9)
-    pdf.set_text_color(120, 120, 120)
-    pdf.cell(0, 5, clean_txt("* Este documento es un reporte oficial interno generado por el Sistema de Control de Guardias."), ln=True)
-    pdf.cell(0, 5, clean_txt("  Las horas reflejadas corresponden únicamente a solicitudes validadas por el Administrador."), ln=True)
-    
-    # SOLUCIÓN AQUÍ: Conversión explícita a bytes puros para Streamlit
+        pdf.set_font("Helvetica", "", 9)
+        pdf.cell(45, 6, str(int(d_disp)), border=1, align="C")
+        pdf.cell(45, 6, f"{int(h_rem)}/8 hs", border=1, align="C")
+        pdf.cell(45, 6, str(int(d_uso)), border=1, align="C")
+        pdf.cell(45, 6, f"{int(h_tot)} hs", border=1, align="C")
+        pdf.ln(8)
+        
+        # Apartado 1: Detalle Cronológico de Guardias realizadas
+        guardias = emp_df[emp_df["Tipo"] == "Guardia"]
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_text_color(60, 60, 60)
+        pdf.cell(0, 6, clean_txt("   > Detalle de Guardias Realizadas:"), ln=True)
+        
+        if not guardias.empty:
+            pdf.set_font("Helvetica", "B", 9)
+            pdf.set_fill_color(235, 235, 235)
+            pdf.cell(10, 6, "", ln=False) # Margen de alineación
+            pdf.cell(60, 6, clean_txt("Fecha de la Guardia"), border=1, fill=True, align="C")
+            pdf.cell(60, 6, clean_txt("Horas Computadas"), border=1, fill=True, align="C")
+            pdf.ln()
+            
+            pdf.set_font("Helvetica", "", 9)
+            for _, row in guardias.iterrows():
+                pdf.cell(10, 6, "", ln=False)
+                pdf.cell(60, 6, clean_txt(row["Fecha"]), border=1, align="C")
+                pdf.cell(60, 6, f"+{row['Horas']} hs", border=1, align="C")
+                pdf.ln()
+        else:
+            pdf.set_font("Helvetica", "I", 9)
+            pdf.set_text_color(130, 130, 130)
+            pdf.cell(10, 6, "", ln=False)
+            pdf.cell(0, 6, clean_txt("No registra guardias aprobadas."), ln=True)
+            pdf.set_text_color(0, 0, 0)
+            
+        pdf.ln(4)
+        
+        # Apartado 2: Detalle Cronológico de Días tomados
+        dias_tomados = emp_df[emp_df["Tipo"] == "Día Tomado"]
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_text_color(60, 60, 60)
+        pdf.cell(0, 6, clean_txt("   > Detalle de Dias Compensatorios Tomados:"), ln=True)
+        
+        if not dias_tomados.empty:
+            pdf.set_font("Helvetica", "B", 9)
+            pdf.set_fill_color(235, 235, 235)
+            pdf.cell(10, 6, "", ln=False)
+            pdf.cell(60, 6, clean_txt("Fecha del Franco"), border=1, fill=True, align="C")
+            pdf.cell(60, 6, clean_txt("Concepto"), border=1, fill=True, align="C")
+            pdf.ln()
+            
+            pdf.set_font("Helvetica", "", 9)
+            for _, row in dias_tomados.iterrows():
+                pdf.cell(10, 6, "", ln=False)
+                pdf.cell(60, 6, clean_txt(row["Fecha"]), border=1, align="C")
+                pdf.cell(60, 6, clean_txt(row["Tipo"]), border=1, align="C")
+                pdf.ln()
+        else:
+            pdf.set_font("Helvetica", "I", 9)
+            pdf.set_text_color(130, 130, 130)
+            pdf.cell(10, 6, "", ln=False)
+            pdf.cell(0, 6, clean_txt("No registra dias tomados hasta la fecha."), ln=True)
+            pdf.set_text_color(0, 0, 0)
+            
+        pdf.ln(6)
+        pdf.set_draw_color(210, 210, 210)
+        pdf.line(10, pdf.get_y(), 200, pdf.get_y()) # Separador gris sutil entre empleados
+        pdf.ln(4)
+        
     return bytes(pdf.output())
 
-# --- INTERFAZ ---
+# --- INTERFAZ STREAMLIT ---
 st.title("🏦 Control de Guardias y Compensatorios")
 st.markdown("---")
 
@@ -228,10 +288,4 @@ if user_sel != "Seleccionar...":
                     df.to_excel(writer, index=False)
                 st.download_button("📥 Descargar Reporte en Excel (Completo)", buffer.getvalue(), "reporte_guardias.xlsx", use_container_width=True)
             
-            with col_down2:
-                pdf_data = generar_reporte_pdf()
-                st.download_button("📄 Descargar Reporte en PDF (Presentable)", pdf_data, f"reporte_guardias_{datetime.now().strftime('%d_%m_%Y')}.pdf", "application/pdf", use_container_width=True)
-            
-            st.markdown("---")
-            st.write("Vista previa global de la base de datos:")
-            st.dataframe(df, use_container_width=True)
+            with col_down
