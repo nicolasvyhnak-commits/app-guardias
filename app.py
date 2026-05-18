@@ -41,7 +41,6 @@ def obtener_resumen(nombre):
 
 # --- FUNCIÓN PARA GENERAR PDF REPORTE ---
 def clean_txt(text):
-    """Limpia caracteres especiales para evitar errores en fuentes nativas del PDF"""
     replacements = {"á": "a", "é": "e", "í": "i", "ó": "o", "ú": "u", "ñ": "n", "Ñ": "N", "Á": "A", "É": "E", "Í": "I", "Ó": "O", "Ú": "U"}
     for search, replace in replacements.items():
         text = text.replace(search, replace)
@@ -51,9 +50,8 @@ def generar_reporte_pdf():
     pdf = FPDF()
     pdf.add_page()
     
-    # Encabezado institucional
     pdf.set_font("Helvetica", "B", 16)
-    pdf.set_text_color(20, 50, 100) # Azul corporativo
+    pdf.set_text_color(20, 50, 100) 
     pdf.cell(0, 10, clean_txt("REPORTE EJECUTIVO DE GUARDIAS Y COMPENSATORIOS"), ln=True, align="C")
     
     pdf.set_font("Helvetica", "I", 10)
@@ -61,15 +59,13 @@ def generar_reporte_pdf():
     pdf.cell(0, 8, f"Fecha de emision: {datetime.now().strftime('%d/%m/%Y %H:%M')}", ln=True, align="C")
     pdf.ln(10)
     
-    # Título de sección
     pdf.set_font("Helvetica", "B", 12)
     pdf.set_text_color(0, 0, 0)
     pdf.cell(0, 8, clean_txt("Resumen Consolidado del Sector"), ln=True)
     pdf.ln(2)
     
-    # Encabezados de la Tabla
     pdf.set_font("Helvetica", "B", 10)
-    pdf.set_fill_color(220, 230, 242) # Fondo azul claro
+    pdf.set_fill_color(220, 230, 242) 
     pdf.cell(55, 8, clean_txt("Empleado"), border=1, fill=True, align="L")
     pdf.cell(35, 8, clean_txt("Días Disponibles"), border=1, fill=True, align="C")
     pdf.cell(35, 8, clean_txt("Horas Acumuladas"), border=1, fill=True, align="C")
@@ -77,7 +73,6 @@ def generar_reporte_pdf():
     pdf.cell(35, 8, clean_txt("Total Horas Extra"), border=1, fill=True, align="C")
     pdf.ln()
     
-    # Filas de Datos
     pdf.set_font("Helvetica", "", 10)
     for emp in EMPLEADOS:
         h_tot, d_uso, d_disp, h_rem = obtener_resumen(emp)
@@ -97,21 +92,44 @@ def generar_reporte_pdf():
     return pdf.output()
 
 # --- INTERFAZ ---
+# REPUSTO: El título principal que se había perdido
+st.title("🏦 Control de Guardias y Compensatorios")
+st.markdown("---")
+
 user_sel = st.selectbox("Identificate para continuar:", ["Seleccionar..."] + EMPLEADOS)
 
 if user_sel != "Seleccionar...":
     es_admin = user_sel in ADMINS
-    auth_admin = False
     
-    if es_admin:
-        with st.expander("🔐 Administrador"):
-            pass_input = st.text_input("Contraseña de seguridad:", type="password")
-            if pass_input == PASSWORD_ADMIN:
-                auth_admin = True
-                st.success("Funciones de validación habilitadas.")
-            elif pass_input != "":
-                st.error("Contraseña incorrecta.")
+    # Inicializar memoria para el login del Administrador
+    if "admin_logueado" not in st.session_state:
+        st.session_state["admin_logueado"] = False
+        
+    # Si cambian de usuario a uno que no es jefe, se desloguea solo por seguridad
+    if not es_admin:
+        st.session_state["admin_logueado"] = False
 
+    # Formulario estático de acceso
+    if es_admin and not st.session_state["admin_logueado"]:
+        with st.expander("🔐 Administrador", expanded=True):
+            pass_input = st.text_input("Contraseña de seguridad:", type="password")
+            if st.button("Ingresar Sistema"):
+                if pass_input == PASSWORD_ADMIN:
+                    st.session_state["admin_logueado"] = True
+                    st.success("Acceso concedido.")
+                    st.rerun()
+                else:
+                    st.error("Contraseña incorrecta.")
+                    
+    auth_admin = st.session_state["admin_logueado"] if es_admin else False
+
+    # Botón discreto para cerrar sesión administrativa si ya entró
+    if auth_admin:
+        if st.button("🔒 Salir de Modo Administrador"):
+            st.session_state["admin_logueado"] = False
+            st.rerun()
+
+    # Métricas de balance
     h_tot, d_uso, d_disp, h_rem = obtener_resumen(user_sel)
     
     st.markdown(f"### Estado de {user_sel}")
@@ -212,20 +230,16 @@ if user_sel != "Seleccionar...":
         with tabs[-1]:
             st.subheader("Descargar Informes del Sector")
             
-            # Botones en paralelo para las descargas
             col_down1, col_down2 = st.columns(2)
-            
             with col_down1:
-                # Descarga de Excel tradicional
                 buffer = io.BytesIO()
                 with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                     df.to_excel(writer, index=False)
                 st.download_button("📥 Descargar Reporte en Excel (Completo)", buffer.getvalue(), "reporte_guardias.xlsx", use_container_width=True)
             
             with col_down2:
-                # NUEVO: Descarga de Reporte Presentable en PDF
                 pdf_data = generar_reporte_pdf()
-                st.download_button("📄 Descargar Reporte en PDF (Presentable)", pdf_data, f"reporte_guardias_{datetime.now().strftime('%d_%m_%Y')}.pdf", "application/pdf", use_container_width=True)
+                st.download_button("📄 Descargar Reporte en PDF (Presentable)", pdf_data, f"reporte_guardias_{datetime.now().strftime('%d/%m/%Y')}.pdf", "application/pdf", use_container_width=True)
             
             st.markdown("---")
             st.write("Vista previa global de la base de datos:")
