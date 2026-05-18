@@ -3,6 +3,7 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime
 import io
+from fpdf import FPDF
 
 # --- CONFIGURACIÓN ---
 EMPLEADOS = [
@@ -31,7 +32,6 @@ df = cargar_datos()
 
 # --- LÓGICA DE SALDOS ---
 def obtener_resumen(nombre):
-    # Solo cuentan las guardias APROBADAS
     user_df = df[(df["Empleado"] == nombre) & (df["Estado"] == "Aprobado")]
     h_ganadas = user_df[user_df["Tipo"] == "Guardia"]["Horas"].sum()
     d_usados = len(user_df[user_df["Tipo"] == "Día Tomado"])
@@ -39,9 +39,64 @@ def obtener_resumen(nombre):
     balance = h_ganadas - (d_usados * 8)
     return h_ganadas, d_usados, (balance // 8), (balance % 8)
 
-# --- INTERFAZ ---
-st.title("🏦 Control de Guardias y Compensatorios")
+# --- FUNCIÓN PARA GENERAR PDF REPORTE ---
+def clean_txt(text):
+    """Limpia caracteres especiales para evitar errores en fuentes nativas del PDF"""
+    replacements = {"á": "a", "é": "e", "í": "i", "ó": "o", "ú": "u", "ñ": "n", "Ñ": "N", "Á": "A", "É": "E", "Í": "I", "Ó": "O", "Ú": "U"}
+    for search, replace in replacements.items():
+        text = text.replace(search, replace)
+    return text.encode('latin-1', 'ignore').decode('latin-1')
 
+def generar_reporte_pdf():
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # Encabezado institucional
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.set_text_color(20, 50, 100) # Azul corporativo
+    pdf.cell(0, 10, clean_txt("REPORTE EJECUTIVO DE GUARDIAS Y COMPENSATORIOS"), ln=True, align="C")
+    
+    pdf.set_font("Helvetica", "I", 10)
+    pdf.set_text_color(100, 100, 100)
+    pdf.cell(0, 8, f"Fecha de emision: {datetime.now().strftime('%d/%m/%Y %H:%M')}", ln=True, align="C")
+    pdf.ln(10)
+    
+    # Título de sección
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.set_text_color(0, 0, 0)
+    pdf.cell(0, 8, clean_txt("Resumen Consolidado del Sector"), ln=True)
+    pdf.ln(2)
+    
+    # Encabezados de la Tabla
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.set_fill_color(220, 230, 242) # Fondo azul claro
+    pdf.cell(55, 8, clean_txt("Empleado"), border=1, fill=True, align="L")
+    pdf.cell(35, 8, clean_txt("Días Disponibles"), border=1, fill=True, align="C")
+    pdf.cell(35, 8, clean_txt("Horas Acumuladas"), border=1, fill=True, align="C")
+    pdf.cell(30, 8, clean_txt("Días Usados"), border=1, fill=True, align="C")
+    pdf.cell(35, 8, clean_txt("Total Horas Extra"), border=1, fill=True, align="C")
+    pdf.ln()
+    
+    # Filas de Datos
+    pdf.set_font("Helvetica", "", 10)
+    for emp in EMPLEADOS:
+        h_tot, d_uso, d_disp, h_rem = obtener_resumen(emp)
+        pdf.cell(55, 8, clean_txt(emp), border=1, align="L")
+        pdf.cell(35, 8, str(int(d_disp)), border=1, align="C")
+        pdf.cell(35, 8, f"{int(h_rem)}/8 hs", border=1, align="C")
+        pdf.cell(30, 8, str(int(d_uso)), border=1, align="C")
+        pdf.cell(35, 8, f"{int(h_tot)} hs", border=1, align="C")
+        pdf.ln()
+        
+    pdf.ln(15)
+    pdf.set_font("Helvetica", "I", 9)
+    pdf.set_text_color(120, 120, 120)
+    pdf.cell(0, 5, clean_txt("* Este documento es un reporte oficial interno generado por el Sistema de Control de Guardias."), ln=True)
+    pdf.cell(0, 5, clean_txt("  Las horas reflejadas corresponden únicamente a solicitudes validadas por el Administrador."), ln=True)
+    
+    return pdf.output()
+
+# --- INTERFAZ ---
 user_sel = st.selectbox("Identificate para continuar:", ["Seleccionar..."] + EMPLEADOS)
 
 if user_sel != "Seleccionar...":
@@ -76,7 +131,6 @@ if user_sel != "Seleccionar...":
     # TAB: CARGAR
     with tabs[0]:
         col_g, col_d = st.columns(2)
-        
         with col_g:
             st.subheader("Registrar Guardia")
             st.write("Suma +2 horas extras para aprobación.")
@@ -153,13 +207,26 @@ if user_sel != "Seleccionar...":
                     st.warning("Solicitud de eliminación enviada.")
                     st.rerun()
 
-    # TAB: REPORTE (Solo Admin)
+    # TAB: REPORTE GENERAL (Solo Admin)
     if auth_admin:
         with tabs[-1]:
-            st.subheader("Reporte General del Sector")
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                df.to_excel(writer, index=False)
-            st.download_button("📥 Descargar Excel para RRHH", buffer.getvalue(), "reporte_guardias.xlsx")
-            st.dataframe(df)
-            # reinicio forzado
+            st.subheader("Descargar Informes del Sector")
+            
+            # Botones en paralelo para las descargas
+            col_down1, col_down2 = st.columns(2)
+            
+            with col_down1:
+                # Descarga de Excel tradicional
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                    df.to_excel(writer, index=False)
+                st.download_button("📥 Descargar Reporte en Excel (Completo)", buffer.getvalue(), "reporte_guardias.xlsx", use_container_width=True)
+            
+            with col_down2:
+                # NUEVO: Descarga de Reporte Presentable en PDF
+                pdf_data = generar_reporte_pdf()
+                st.download_button("📄 Descargar Reporte en PDF (Presentable)", pdf_data, f"reporte_guardias_{datetime.now().strftime('%d_%m_%Y')}.pdf", "application/pdf", use_container_width=True)
+            
+            st.markdown("---")
+            st.write("Vista previa global de la base de datos:")
+            st.dataframe(df, use_container_width=True)
