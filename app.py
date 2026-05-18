@@ -89,10 +89,10 @@ def generar_reporte_pdf():
     pdf.cell(0, 5, clean_txt("* Este documento es un reporte oficial interno generado por el Sistema de Control de Guardias."), ln=True)
     pdf.cell(0, 5, clean_txt("  Las horas reflejadas corresponden únicamente a solicitudes validadas por el Administrador."), ln=True)
     
-    return pdf.output()
+    # SOLUCIÓN AQUÍ: Conversión explícita a bytes puros para Streamlit
+    return bytes(pdf.output())
 
 # --- INTERFAZ ---
-# REPUSTO: El título principal que se había perdido
 st.title("🏦 Control de Guardias y Compensatorios")
 st.markdown("---")
 
@@ -101,15 +101,12 @@ user_sel = st.selectbox("Identificate para continuar:", ["Seleccionar..."] + EMP
 if user_sel != "Seleccionar...":
     es_admin = user_sel in ADMINS
     
-    # Inicializar memoria para el login del Administrador
     if "admin_logueado" not in st.session_state:
         st.session_state["admin_logueado"] = False
         
-    # Si cambian de usuario a uno que no es jefe, se desloguea solo por seguridad
     if not es_admin:
         st.session_state["admin_logueado"] = False
 
-    # Formulario estático de acceso
     if es_admin and not st.session_state["admin_logueado"]:
         with st.expander("🔐 Administrador", expanded=True):
             pass_input = st.text_input("Contraseña de seguridad:", type="password")
@@ -123,13 +120,11 @@ if user_sel != "Seleccionar...":
                     
     auth_admin = st.session_state["admin_logueado"] if es_admin else False
 
-    # Botón discreto para cerrar sesión administrativa si ya entró
     if auth_admin:
         if st.button("🔒 Salir de Modo Administrador"):
             st.session_state["admin_logueado"] = False
             st.rerun()
 
-    # Métricas de balance
     h_tot, d_uso, d_disp, h_rem = obtener_resumen(user_sel)
     
     st.markdown(f"### Estado de {user_sel}")
@@ -146,7 +141,6 @@ if user_sel != "Seleccionar...":
     
     tabs = st.tabs(pest_nombres)
 
-    # TAB: CARGAR
     with tabs[0]:
         col_g, col_d = st.columns(2)
         with col_g:
@@ -172,7 +166,6 @@ if user_sel != "Seleccionar...":
             else:
                 st.warning("No tenés saldo suficiente (mínimo 8hs aprobadas).")
 
-    # TAB: VALIDACIONES (Solo Admin)
     if auth_admin:
         with tabs[1]:
             st.subheader("Trámites esperando resolución")
@@ -202,7 +195,6 @@ if user_sel != "Seleccionar...":
             else:
                 st.info("No hay solicitudes pendientes.")
 
-    # TAB: MI HISTORIAL
     hist_idx = 2 if auth_admin else 1
     with tabs[hist_idx]:
         st.write("Tus movimientos registrados:")
@@ -225,7 +217,6 @@ if user_sel != "Seleccionar...":
                     st.warning("Solicitud de eliminación enviada.")
                     st.rerun()
 
-    # TAB: REPORTE GENERAL (Solo Admin)
     if auth_admin:
         with tabs[-1]:
             st.subheader("Descargar Informes del Sector")
@@ -239,7 +230,7 @@ if user_sel != "Seleccionar...":
             
             with col_down2:
                 pdf_data = generar_reporte_pdf()
-                st.download_button("📄 Descargar Reporte en PDF (Presentable)", pdf_data, f"reporte_guardias_{datetime.now().strftime('%d/%m/%Y')}.pdf", "application/pdf", use_container_width=True)
+                st.download_button("📄 Descargar Reporte en PDF (Presentable)", pdf_data, f"reporte_guardias_{datetime.now().strftime('%d_%m_%Y')}.pdf", "application/pdf", use_container_width=True)
             
             st.markdown("---")
             st.write("Vista previa global de la base de datos:")
