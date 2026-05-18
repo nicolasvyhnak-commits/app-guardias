@@ -52,7 +52,7 @@ def generar_reporte_pdf():
     
     # Encabezado principal personalizado
     pdf.set_font("Helvetica", "B", 16)
-    pdf.set_text_color(20, 50, 100) # Azul corporativo
+    pdf.set_text_color(20, 50, 100) 
     pdf.cell(0, 10, clean_txt("REPORTE DE GUARDIAS - SECTOR TÍTULOS"), ln=True, align="C")
     
     pdf.set_font("Helvetica", "I", 10)
@@ -63,8 +63,6 @@ def generar_reporte_pdf():
     # Recorrer cada empleado para confeccionar su reporte analítico
     for emp in EMPLEADOS:
         h_tot, d_uso, d_disp, h_rem = obtener_resumen(emp)
-        
-        # Filtrar exclusivamente los movimientos aprobados del empleado actual
         emp_df = df[(df["Empleado"] == emp) & (df["Estado"] == "Aprobado")]
         
         # Nombre del Empleado
@@ -89,7 +87,7 @@ def generar_reporte_pdf():
         pdf.cell(45, 6, f"{int(h_tot)} hs", border=1, align="C")
         pdf.ln(8)
         
-        # Apartado 1: Detalle Cronológico de Guardias realizadas
+        # Detalle de Guardias
         guardias = emp_df[emp_df["Tipo"] == "Guardia"]
         pdf.set_font("Helvetica", "B", 10)
         pdf.set_text_color(60, 60, 60)
@@ -98,7 +96,7 @@ def generar_reporte_pdf():
         if not guardias.empty:
             pdf.set_font("Helvetica", "B", 9)
             pdf.set_fill_color(235, 235, 235)
-            pdf.cell(10, 6, "", ln=False) # Margen de alineación
+            pdf.cell(10, 6, "", ln=False) 
             pdf.cell(60, 6, clean_txt("Fecha de la Guardia"), border=1, fill=True, align="C")
             pdf.cell(60, 6, clean_txt("Horas Computadas"), border=1, fill=True, align="C")
             pdf.ln()
@@ -118,7 +116,7 @@ def generar_reporte_pdf():
             
         pdf.ln(4)
         
-        # Apartado 2: Detalle Cronológico de Días tomados
+        # Detalle de Días Tomados
         dias_tomados = emp_df[emp_df["Tipo"] == "Día Tomado"]
         pdf.set_font("Helvetica", "B", 10)
         pdf.set_text_color(60, 60, 60)
@@ -147,7 +145,7 @@ def generar_reporte_pdf():
             
         pdf.ln(6)
         pdf.set_draw_color(210, 210, 210)
-        pdf.line(10, pdf.get_y(), 200, pdf.get_y()) # Separador gris sutil entre empleados
+        pdf.line(10, pdf.get_y(), 200, pdf.get_y()) 
         pdf.ln(4)
         
     return bytes(pdf.output())
@@ -288,4 +286,10 @@ if user_sel != "Seleccionar...":
                     df.to_excel(writer, index=False)
                 st.download_button("📥 Descargar Reporte en Excel (Completo)", buffer.getvalue(), "reporte_guardias.xlsx", use_container_width=True)
             
-            with col_down
+            with col_down2:
+                pdf_data = generar_reporte_pdf()
+                st.download_button("📄 Descargar Reporte en PDF (Presentable)", pdf_data, f"reporte_guardias_{datetime.now().strftime('%d/%m/%Y')}.pdf", "application/pdf", use_container_width=True)
+            
+            st.markdown("---")
+            st.write("Vista previa global de la base de datos:")
+            st.dataframe(df, use_container_width=True)
