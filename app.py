@@ -162,3 +162,4 @@ if user_sel != "Seleccionar...":
                 df.to_excel(writer, index=False)
             st.download_button("📥 Descargar Excel para RRHH", buffer.getvalue(), "reporte_guardias.xlsx")
             st.dataframe(df)
+            # reinicio forzado
