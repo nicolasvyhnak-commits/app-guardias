@@ -8,10 +8,11 @@ from fpdf import FPDF
 # --- CONFIGURACIÓN TÍTULOS ---
 EMPLEADOS = [
     "Carla Simonetti",
-    "Edgar Galli",  # <-- AGREGADO
+    "Edgar Galli",  
     "Hornorio Felipe Oleksuk", 
     "Marcos Alonso", 
     "Nicolas Vyhñak", 
+    "Norberto Palacios", # <-- AHORA SÍ, NORBERTO INTACTO
     "Viviana Ingribelli"
 ]
 ADMINS = ["Nicolas Vyhñak", "Viviana Ingribelli"]
@@ -60,7 +61,7 @@ def generar_reporte_pdf():
     pdf.ln(10)
     
     for emp in EMPLEADOS:
-        if emp == "Edgar Galli": continue  # No procesamos al auditor en el PDF analítico
+        if emp == "Edgar Galli": continue  
         h_tot, d_uso, d_disp, h_rem = obtener_resumen(emp)
         emp_df = df[(df["Empleado"] == emp) & (df["Estado"] == "Aprobado")]
         
@@ -183,7 +184,6 @@ if user_sel != "Seleccionar...":
     
     st.markdown(f"### Estado de {user_sel}")
     
-    # Si es Edgar Galli, no le mostramos métricas vacías de él, pasamos directo a las pestañas
     if not es_auditor:
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Días Disponibles", f"{int(d_disp)}")
@@ -191,7 +191,6 @@ if user_sel != "Seleccionar...":
         c3.metric("Total Horas (Aprobadas)", f"{int(h_tot)} hs")
         c4.metric("Días Ya Tomados", f"{int(d_uso)}")
 
-    # Configuración dinámica de pestañas
     if es_auditor:
         pest_nombres = ["📊 Resumen General del Sector"]
     else:
@@ -202,7 +201,6 @@ if user_sel != "Seleccionar...":
     
     tabs = st.tabs(pest_nombres)
 
-    # LÓGICA PARA EDGAR GALLI (VISTA PÚBLICA GENERAL)
     if es_auditor:
         with tabs[0]:
             st.subheader("📋 Resumen Consolidado de todo el Sector Títulos")
@@ -223,7 +221,6 @@ if user_sel != "Seleccionar...":
             st.dataframe(resumen_df, use_container_width=True, hide_index=True)
             
     else:
-        # TAB: CARGAR (Usuarios normales)
         with tabs[0]:
             col_g, col_d = st.columns(2)
             with col_g:
@@ -249,7 +246,6 @@ if user_sel != "Seleccionar...":
                 else:
                     st.warning("No tenés saldo suficiente (mínimo 8hs aprobadas).")
 
-        # TAB: VALIDACIONES (Solo Admin)
         if auth_admin:
             with tabs[1]:
                 st.subheader("Trámites esperando resolución")
@@ -279,7 +275,6 @@ if user_sel != "Seleccionar...":
                 else:
                     st.info("No hay solicitudes pendientes.")
 
-        # TAB: MI HISTORIAL
         hist_idx = 2 if auth_admin else 1
         with tabs[hist_idx]:
             st.write("Tus movimientos registrados:")
@@ -302,7 +297,6 @@ if user_sel != "Seleccionar...":
                         st.warning("Solicitud de eliminación enviada.")
                         st.rerun()
 
-        # TAB: REPORTE GENERAL (Solo Admin)
         if auth_admin:
             with tabs[-1]:
                 st.subheader("Descargar Informes del Sector")
